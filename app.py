@@ -8,6 +8,12 @@ import yfinance as yf
 
 st.set_page_config(page_title="Market Overview Dashboard", layout="wide")
 
+BENCHMARK = "SPY"
+PRICE_HISTORY_PERIOD = "2y"
+
+def _asof_ts():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
 # =========================
 # CSS
 # =========================
@@ -20,42 +26,90 @@ CSS = """
 .card {
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.03);
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
 }
-.pill {
-  display:inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-weight: 900;
-  font-size: 0.85rem;
-}
-.pill-green {background: rgba(80, 200, 120, 0.25); color: #B7FFCB; border: 1px solid rgba(80,200,120,0.45);}
-.pill-amber {background: rgba(255, 193, 7, 0.18); color: #FFE8A6; border: 1px solid rgba(255,193,7,0.40);}
-.pill-red   {background: rgba(255, 99, 132, 0.18); color: #FFB3C2; border: 1px solid rgba(255,99,132,0.40);}
+.card h3{margin:0 0 8px 0; font-size: 1.02rem; font-weight: 950;}
+.card .hint{opacity:0.72; font-size:0.88rem; margin-top:-2px; margin-bottom:10px;}
 
-.badge {
+.badge{
   display:inline-block;
-  padding: 2px 10px;
+  padding: 2px 8px;
   border-radius: 999px;
   font-weight: 900;
+  font-size: 0.78rem;
+  letter-spacing: 0.2px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.badge-yes{background: rgba(124,252,154,0.15); color:#7CFC9A;}
+.badge-no{background: rgba(255,107,107,0.12); color:#FF6B6B;}
+.badge-neutral{background: rgba(255,200,60,0.12); color: rgba(255,200,60,0.98);}
+
+.pill{
+  display:inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 950;
   font-size: 0.82rem;
+  border: 1px solid rgba(255,255,255,0.12);
 }
-.badge-yes {background: rgba(80, 200, 120, 0.22); color: #B7FFCB; border: 1px solid rgba(80,200,120,0.40);}
-.badge-neutral {background: rgba(255, 193, 7, 0.16); color: #FFE8A6; border: 1px solid rgba(255,193,7,0.35);}
-.badge-no  {background: rgba(255, 99, 132, 0.16); color: #FFB3C2; border: 1px solid rgba(255,99,132,0.35);}
+.pill-red{background: rgba(255,80,80,0.16); color:#FF6B6B;}
+.pill-amber{background: rgba(255,200,60,0.16); color: rgba(255,200,60,0.98);}
+.pill-green{background: rgba(80,255,120,0.16); color:#7CFC9A;}
 
-[data-testid="stDataFrame"] {border-radius: 10px; overflow: hidden;}
+.metric-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+.metric-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+}
+.metric-row .k{opacity:0.85; font-weight:800;}
+.metric-row .v{font-weight:950;}
+
+.pl-table-wrap {border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.10);}
+table.pl-table {border-collapse: collapse; width: 100%; font-size: 13px;}
+table.pl-table thead th {
+  position: sticky; top: 0;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  font-weight: 900;
+}
+table.pl-table tbody td{
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  vertical-align: middle;
+}
+td.mono {font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+td.ticker {font-weight: 900;}
+td.name {white-space: normal; line-height: 1.15;}
+tr.group-row td{
+  background: rgba(0,0,0,0.70) !important;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
+tr.group-row td:not(.name){
+  color: rgba(0,0,0,0) !important;
+}
+tr.group-row td.name{
+  color: #FFFFFF !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.2px;
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
-
-BENCHMARK = "SPY"
-PRICE_HISTORY_PERIOD = "2y"
-
-def _asof_ts():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 # ============================================================
 # YOUR TICKER LIST (1 per line)
@@ -244,6 +298,9 @@ ALL_TICKERS_SET = set(ALL_TICKERS)
 MAJOR = ALL_TICKERS[:10]
 SECTORS = ALL_TICKERS[10:21]
 
+# ===========================
+# SUB-SECTOR / INDUSTRY GROUP MAP
+# ===========================
 SUBSECTOR_LEFT = {
     "Semiconductors": ["SOXX","SMH","XSD"],
     "Software / Cloud / Broad Tech": ["IGV","XSW","IGM","VGT","XT"],
@@ -262,7 +319,6 @@ SUBSECTOR_LEFT = {
     "Oil Services": ["OIH"],
     "Global Energy": ["IXC"],
 }
-
 SUBSECTOR_RIGHT = {
     "Biotechnology / Genomics": ["IBB","XBI","PBE","IDNA"],
     "Medical Equipment": ["IHI","XHE"],
@@ -281,7 +337,6 @@ SUBSECTOR_RIGHT = {
     "Real Estate": ["VNQ","IYR","REET"],
     "Specialty REITs": ["SRVR","HOMZ","SCHH","NETL"],
 }
-
 SUBSECTOR_ALL = {}
 SUBSECTOR_ALL.update(SUBSECTOR_LEFT)
 SUBSECTOR_ALL.update(SUBSECTOR_RIGHT)
@@ -333,54 +388,46 @@ def fetch_names(tickers: list[str]) -> dict[str, str]:
     return names
 
 # -----------------------------
-# Sparkline (kept as-is)
+# Sparkline
 # -----------------------------
 SPARK_CHARS = "▁▂▃▄▅▆▇█"
-SPARK_MAP = {c: i for i, c in enumerate(SPARK_CHARS)}
 
-def sparkline_from_series(s: pd.Series, n=26) -> str:
+def sparkline_from_series(s: pd.Series, n=26):
     s = s.dropna().tail(n)
     if s.empty:
-        return ""
+        return "", []
     if s.nunique() == 1:
-        return SPARK_CHARS[len(SPARK_CHARS)//2] * len(s)
+        mid = len(SPARK_CHARS)//2
+        return (SPARK_CHARS[mid] * len(s)), ([mid] * len(s))
 
     lo, hi = float(s.min()), float(s.max())
     if hi - lo <= 1e-12:
-        return ""
+        return "", []
     scaled = (s - lo) / (hi - lo)
     idx = (scaled * (len(SPARK_CHARS)-1)).round().astype(int).clip(0, len(SPARK_CHARS)-1)
-    return "".join(SPARK_CHARS[i] for i in idx)
+    levels = idx.tolist()
+    spark = "".join(SPARK_CHARS[i] for i in levels)
+    return spark, levels
 
-def spark_strength(s: str) -> float:
-    s = (s or "").strip()
-    if not s:
-        return np.nan
-    vals = [SPARK_MAP.get(ch, np.nan) for ch in s]
-    vals = [v for v in vals if not np.isnan(v)]
-    if not vals:
-        return np.nan
-    return float(np.mean(vals) / (len(SPARK_CHARS) - 1))
-
-# -----------------------------
-# Metrics / Table
-# -----------------------------
 def _ret(close: pd.Series, periods: int):
     return close.pct_change(periods=periods)
 
 def _ratio_rs(close_t: pd.Series, close_b: pd.Series, periods: int):
-    # FIX: use close_b not undefined b
+    # FIXED: compute both legs correctly
     t = close_t / close_t.shift(periods)
     b = close_b / close_b.shift(periods)
     return (t / b) - 1
 
+# -----------------------------
+# Metrics / Table
+# -----------------------------
 def build_table(p: pd.DataFrame, tickers: list[str], name_map: dict[str, str]) -> pd.DataFrame:
     horizons_ret = {"% 1D": 1, "% 1W": 5, "% 1M": 21, "% 3M": 63, "% 6M": 126, "% 1Y": 252}
-    horizons_rs = {"RS 1W": 5, "RS 1M": 21, "RS 3M": 63, "RS 6M": 126, "RS 1Y": 252}
+    horizons_rs  = {"RS 1W": 5, "RS 1M": 21, "RS 3M": 63, "RS 6M": 126, "RS 1Y": 252}
 
     b = p[BENCHMARK]
-
     rows = []
+
     for t in tickers:
         if t not in p.columns:
             continue
@@ -389,13 +436,15 @@ def build_table(p: pd.DataFrame, tickers: list[str], name_map: dict[str, str]) -
         last_price = float(close.dropna().iloc[-1]) if close.dropna().shape[0] else np.nan
 
         rs_ratio_series = (close / close.shift(21)) / (b / b.shift(21))
-        spark = sparkline_from_series(rs_ratio_series, n=26)
+        spark, levels = sparkline_from_series(rs_ratio_series, n=26)
 
         rec = {
             "Ticker": t,
             "Name": name_map.get(t, t),
             "Price": last_price,
             "Relative Strength 1M": spark,
+            "__spark_levels": levels,
+            "__is_header": False
         }
 
         for col, n in horizons_rs.items():
@@ -416,10 +465,28 @@ def build_table(p: pd.DataFrame, tickers: list[str], name_map: dict[str, str]) -
 
     return df
 
+def grouped_block(groups: dict[str, list[str]], df_by_ticker: dict[str, dict]) -> pd.DataFrame:
+    out_rows = []
+    for group_name, ticks in groups.items():
+        out_rows.append({
+            "Ticker": "",
+            "Name": group_name,
+            "Price": "",
+            "Relative Strength 1M": "",
+            "RS 1W": "", "RS 1M": "", "RS 3M": "", "RS 6M": "", "RS 1Y": "",
+            "% 1D": "", "% 1W": "", "% 1M": "", "% 3M": "", "% 6M": "", "% 1Y": "",
+            "__spark_levels": [],
+            "__is_header": True
+        })
+        for t in ticks:
+            if t in df_by_ticker:
+                out_rows.append(df_by_ticker[t])
+    return pd.DataFrame(out_rows)
+
 # -----------------------------
-# Color helpers
+# HTML rendering
 # -----------------------------
-def _heat_rs(v):
+def rs_bg(v):
     try:
         v = float(v)
     except:
@@ -434,9 +501,9 @@ def _heat_rs(v):
         r = int(255 - ((x-0.5)/0.5) * (255-40))
         g = 200
     b = 60
-    return f"background-color: rgb({r},{g},{b}); color:#0B0B0B; font-weight:900;"
+    return f"background-color: rgb({r},{g},{b}); color:#0B0B0B; font-weight:900; border-radius:6px; padding:2px 6px; display:inline-block; min-width:32px; text-align:center;"
 
-def _pct_text(v):
+def pct_style(v):
     try:
         v = float(v)
     except:
@@ -444,296 +511,397 @@ def _pct_text(v):
     if np.isnan(v):
         return ""
     if v > 0:
-        return "color: #7CFC9A; font-weight: 800;"
+        return "color:#7CFC9A; font-weight:800;"
     if v < 0:
-        return "color: #FF6B6B; font-weight: 800;"
+        return "color:#FF6B6B; font-weight:800;"
     return "opacity:0.9; font-weight:700;"
 
-def _spark_heat(s):
-    strength = spark_strength(s)
-    if np.isnan(strength):
+def fmt_price(v):
+    if v == "" or v is None:
         return ""
-    x = float(strength)
-    if x < 0.5:
-        r = 255
-        g = int(80 + (x/0.5) * (180-80))
-    else:
-        r = int(255 - ((x-0.5)/0.5) * (255-40))
-        g = 200
-    b = 60
-    return f"background-color: rgba({r},{g},{b},0.0); color: #FFFFFF; font-weight: 900;"
+    try:
+        return f"${float(v):,.2f}"
+    except:
+        return ""
 
-def style_df(df: pd.DataFrame):
-    fmt = {
-        "Price": "${:,.2f}",
-        "% 1D": "{:.2%}", "% 1W": "{:.2%}", "% 1M": "{:.2%}",
-        "% 3M": "{:.2%}", "% 6M": "{:.2%}", "% 1Y": "{:.2%}",
-        "RS 1W": "{:.0f}", "RS 1M": "{:.0f}", "RS 3M": "{:.0f}", "RS 6M": "{:.0f}", "RS 1Y": "{:.0f}",
-    }
+def fmt_pct(v):
+    if v == "" or v is None:
+        return ""
+    try:
+        return f"{float(v):.2%}"
+    except:
+        return ""
 
-    rs_cols = ["RS 1W", "RS 1M", "RS 3M", "RS 6M", "RS 1Y"]
-    pct_cols = ["% 1D", "% 1W", "% 1M", "% 3M", "% 6M", "% 1Y"]
+def fmt_rs(v):
+    if v == "" or v is None:
+        return ""
+    try:
+        return f"{float(v):.0f}"
+    except:
+        return ""
 
-    sty = df.style.format(fmt, na_rep="")
+def spark_html(spark: str, levels: list[int]):
+    if not spark or not levels or len(spark) != len(levels):
+        return ""
 
-    for c in rs_cols:
-        if c in df.columns:
-            sty = sty.applymap(_heat_rs, subset=[c])
+    def level_to_rgb(lv: int):
+        t = lv / 7.0
+        if t <= 0.5:
+            k = t / 0.5
+            r1, g1, b1 = 255, 80, 80
+            r2, g2, b2 = 255, 200, 60
+            r = int(r1 + (r2 - r1) * k)
+            g = int(g1 + (g2 - g1) * k)
+            b = int(b1 + (b2 - b1) * k)
+        else:
+            k = (t - 0.5) / 0.5
+            r1, g1, b1 = 255, 200, 60
+            r2, g2, b2 = 80, 255, 120
+            r = int(r1 + (r2 - r1) * k)
+            g = int(g1 + (g2 - g1) * k)
+            b = int(b1 + (b2 - b1) * k)
+        return r, g, b
 
-    for c in pct_cols:
-        if c in df.columns:
-            sty = sty.applymap(_pct_text, subset=[c])
+    spans = []
+    for ch, lv in zip(spark, levels):
+        r, g, b = level_to_rgb(int(lv))
+        spans.append(f'<span style="color: rgb({r},{g},{b}); font-weight:900;">{ch}</span>')
+    return "".join(spans)
 
-    if "Relative Strength 1M" in df.columns:
-        # keep monospace for sparkline readability; no background fill
-        sty = sty.applymap(_spark_heat, subset=["Relative Strength 1M"])
-        sty = sty.set_properties(
-            subset=["Relative Strength 1M"],
-            **{"font-family": "monospace", "font-weight": "900"}
-        )
+def render_table_html(df: pd.DataFrame, columns: list[str], height_px: int = 360):
+    th = "".join([f"<th>{c}</th>" for c in columns])
 
-    return sty
+    trs = []
+    for _, row in df.iterrows():
+        is_header = bool(row.get("__is_header", False))
+        tr_class = "group-row" if is_header else ""
 
-# -----------------------------
-# Sub-sector grouped headers
-# -----------------------------
-def grouped_block(groups: dict[str, list[str]], df_by_ticker: dict[str, dict]) -> pd.DataFrame:
-    out_rows = []
-    for group_name, ticks in groups.items():
-        out_rows.append({
-            "Ticker": "",
-            "Name": group_name,
-            "Price": np.nan,
-            "Relative Strength 1M": "",
-            "RS 1W": np.nan, "RS 1M": np.nan, "RS 3M": np.nan, "RS 6M": np.nan, "RS 1Y": np.nan,
-            "% 1D": np.nan, "% 1W": np.nan, "% 1M": np.nan, "% 3M": np.nan, "% 6M": np.nan, "% 1Y": np.nan,
-        })
-        for t in ticks:
-            if t in df_by_ticker:
-                out_rows.append(df_by_ticker[t])
-    return pd.DataFrame(out_rows)
+        tds = []
+        for c in columns:
+            val = row.get(c, "")
+            td_class = ""
+            if c == "Ticker":
+                td_class = "ticker"
+            elif c == "Name":
+                td_class = "name"
+            elif c == "Relative Strength 1M":
+                td_class = "mono"
 
-def style_grouped(df: pd.DataFrame):
-    sty = style_df(df)
+            if is_header:
+                cell_html = str(val) if c == "Name" else ""
+            else:
+                if c == "Price":
+                    cell_html = fmt_price(val)
+                elif c.startswith("% "):
+                    txt = fmt_pct(val)
+                    stl = pct_style(val)
+                    cell_html = f'<span style="{stl}">{txt}</span>' if stl and txt != "" else txt
+                elif c.startswith("RS "):
+                    txt = fmt_rs(val)
+                    stl = rs_bg(val)
+                    cell_html = f'<span style="{stl}">{txt}</span>' if stl and txt != "" else txt
+                elif c == "Relative Strength 1M":
+                    cell_html = spark_html(str(val), row.get("__spark_levels", []))
+                else:
+                    cell_html = "" if (val is None or (isinstance(val, float) and np.isnan(val))) else str(val)
 
-    def _header_row_styles(row):
-        is_header = (str(row.get("Ticker", "")).strip() == "") and (str(row.get("Name", "")).strip() != "")
-        if is_header:
-            return ["font-weight:950; background-color: rgba(0,0,0,0.55);" for _ in row.index]
-        return ["" for _ in row.index]
+            tds.append(f'<td class="{td_class}">{cell_html}</td>')
 
-    return sty.apply(_header_row_styles, axis=1)
+        trs.append(f'<tr class="{tr_class}">' + "".join(tds) + "</tr>")
 
-# ===========================
-# Manual Inputs (UPDATED)
-# ===========================
-DEFAULT_RIGHT = {
-    "Market Exposure": {"IBD Exposure": "40-60%", "Selected": "X"},
+    table = f"""
+    <div class="pl-table-wrap" style="max-height:{height_px}px; overflow:auto;">
+      <table class="pl-table">
+        <thead><tr>{th}</tr></thead>
+        <tbody>
+          {''.join(trs)}
+        </tbody>
+      </table>
+    </div>
+    """
+    st.markdown(table, unsafe_allow_html=True)
+
+# =========================
+# Manual Inputs (UPDATED per your changes)
+# =========================
+DEFAULT_MANUAL = {
+    "Stock Market Exposure": {"Exposure": "40-60%"},
     "Market Type": {"Type": "Bull Quiet"},
-    "Trend Condition (QQQ)": {
-        "Above 5DMA": "Yes",
-        "Above 10DMA": "Yes",
-        "Above 20DMA": "Yes",
-        "Above 50DMA": "Yes",
-        "Above 200DMA": "No",
-    },
-    "NASDAQ Net 52W New High/Low": {"Daily": 231, "Weekly": 811, "Monthly": -828},
+    "Trend Condition (QQQ)": {"Above 5DMA": "Yes", "Above 10DMA": "Yes", "Above 20DMA": "Yes", "Above 50DMA": "Yes", "Above 200DMA": "No"},
+    "Nasdaq Net 52-Week New High/Low": {"Daily": 231, "Weekly": 811, "Monthly": -828},
     "Market Indicators": {
         "VIX": 16.34,
         "PCC": 0.67,
-        "Up/Down Vol Ratio": 2.36,
-        "A/D Ratio": 2.20,
-        "U.S. Dollar Trend": "Downtrend",   # dropdown
+        "Credit (IEI vs HYG)": "Aligned",
+        "U.S. Dollar": "Downtrend",
+        "Distribution Days": 2,
+        "Up/Down Volume (Daily)": 2.36,
+        "Up/Down Volume (Weekly)": 2.10,
+        "Up/Down Volume (Monthly)": 1.80,
+        "A/D Ratio (Daily)": 2.20,
+        "A/D Ratio (Weekly)": 1.95,
+        "A/D Ratio (Monthly)": 1.70,
     },
-    "Macro": {
-        "Fed Funds": 4.09,
-        "M2 Money": 22.2,
-        "10yr": 4.02,
-        "U.S. Dollar (DXY)": 98.72,         # numeric
-    },
-    "Breadth & Participation": {
-        "% Price Above 10DMA": 56,
-        "% Price Above 20DMA": 49,
-        "% Price Above 50DMA": 58,
-        "% Price Above 200DMA": 68,
-    },
-    # Composite now uses NUMERIC factors (0.0–2.0 step 0.5) and auto-total
+    "Macro": {"Fed Funds": 4.09, "M2 Money": 22.2, "10yr": 4.02},
+    "Breadth & Participation": {"% Price Above 10DMA": 56, "% Price Above 20DMA": 49, "% Price Above 50DMA": 58, "% Price Above 200DMA": 68},
     "Composite Model": {
-        "Monetary Policy (Fed Funds)": 1.5,
-        "Liquidity Flow (M2 + Credit)": 2.0,
-        "Rates & Credit (10yr + HYG/IEI)": 2.0,
-        "Tape Strength (Breadth + U/D + Net High/Lows)": 1.5,
-        "Sentiment (VIX + Put/Call)": 1.5,
+        "Monetary Policy": 1.0,
+        "Liquidity Flow": 2.0,
+        "Rates & Credit": 2.0,
+        "Tape Strength": 2.0,
+        "Sentiment": 1.0
     },
     "Hot Sectors / Industry Groups": {"Notes": "Type here..."},
     "Market Correlations": {"Correlated": "Dow, Nasdaq", "Uncorrelated": "Dollar, Bonds"},
 }
 
-YES_NO = ["Yes", "No"]
-USD_TREND = ["Uptrend", "Downtrend", "Sideways"]
+EXPOSURE_OPTIONS = ["0-20%", "20-40%", "40-60%", "60-80%", "80-100%"]
+EXPOSURE_PILL = {
+    "0-20%": "pill pill-red",
+    "20-40%": "pill pill-amber",
+    "40-60%": "pill pill-green",
+    "60-80%": "pill pill-green",
+    "80-100%": "pill pill-green",
+}
+
 MARKET_TYPES = ["Bull Quiet", "Bull Volatile", "Bear Quiet", "Bear Volatile", "Sideways Quiet", "Sideways Volatile"]
 
-def init_right_state():
-    if "right_panel" not in st.session_state:
-        st.session_state.right_panel = DEFAULT_RIGHT
+def init_manual_state():
+    if "manual_inputs" not in st.session_state:
+        st.session_state.manual_inputs = DEFAULT_MANUAL
+
+def _yesno_badge(v: str) -> str:
+    v = str(v).strip().lower()
+    if v in ["yes", "y", "true", "1"]:
+        return '<span class="badge badge-yes">YES</span>'
+    if v in ["no", "n", "false", "0"]:
+        return '<span class="badge badge-no">NO</span>'
+    return '<span class="badge badge-neutral">—</span>'
+
+def _num_color(v):
+    try:
+        v = float(v)
+    except:
+        return "opacity:0.85; font-weight:950;"
+    if v > 0:
+        return "color:#7CFC9A; font-weight:950;"
+    if v < 0:
+        return "color:#FF6B6B; font-weight:950;"
+    return "opacity:0.85; font-weight:950;"
 
 def _score_to_label(score: float):
-    """
-    Composite component score mapping:
-      Bad:     0.0–0.5
-      Neutral: 1.0
-      Good:    1.5–2.0
-    """
-    try:
-        score = float(score)
-    except:
-        return ("Neutral", "badge badge-neutral")
-
-    if score >= 1.5:
+    if score >= 1.75:
         return ("Good", "badge badge-yes")
-    if score <= 0.5:
-        return ("Bad", "badge badge-no")
-    return ("Neutral", "badge badge-neutral")
+    if score >= 1.25:
+        return ("Neutral", "badge badge-neutral")
+    return ("Bad", "badge badge-no")
 
-def _total_score_pill_class(total: float) -> str:
-    """
-    Total score mapping (0–10):
-      Green: 7.0–10.0
-      Amber: 5.0–6.5
-      Red:   0.0–4.5
-    """
-    try:
-        total = float(total)
-    except:
-        return "pill pill-amber"
-
-    if total >= 7.0:
-        return "pill pill-green"
-    if total >= 5.0:
-        return "pill pill-amber"
-    return "pill pill-red"
-
-def right_panel_ui():
-    init_right_state()
-    rp = st.session_state.right_panel
+def manual_inputs_ui():
+    init_manual_state()
+    mi = st.session_state.manual_inputs
 
     st.markdown(
-        '<div class="card"><div style="font-weight:900; font-size:1.0rem;">Manual Inputs</div>'
-        '<div class="small-muted">You update only these. Everything else pulls & calculates automatically.</div></div>',
+        '<div class="card"><h3>Manual Inputs</h3>'
+        '<div class="hint">Editable for you right now. We’ll lock this for subscribers later.</div>'
+        '</div>',
         unsafe_allow_html=True
     )
 
     st.download_button(
-        "Download settings.json",
-        data=json.dumps(rp, indent=2),
-        file_name="dashboard_settings.json",
+        "Download manual_inputs.json",
+        data=json.dumps(mi, indent=2),
+        file_name="manual_inputs.json",
         mime="application/json",
         use_container_width=True,
     )
 
-    up = st.file_uploader("Import settings JSON (optional)", type=["json"])
+    up = st.file_uploader("Import manual_inputs JSON (optional)", type=["json"])
     if up is not None:
         try:
-            st.session_state.right_panel = json.loads(up.read().decode("utf-8"))
-            rp = st.session_state.right_panel
-            st.success("Imported settings.")
+            st.session_state.manual_inputs = json.loads(up.read().decode("utf-8"))
+            mi = st.session_state.manual_inputs
+            st.success("Imported manual inputs.")
         except Exception as e:
             st.error(f"Import failed: {e}")
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-    # --- Render blocks with per-field widgets (so we can do true dropdowns + numeric inputs) ---
-    for block, data in rp.items():
-        st.markdown(f'<div class="card"><div style="font-weight:900; margin-bottom:8px;">{block}</div>', unsafe_allow_html=True)
+    # Stock Market Exposure
+    st.markdown('<div class="card"><h3>Stock Market Exposure</h3><div class="hint">Pick your exposure band.</div>', unsafe_allow_html=True)
+    current_ex = str(mi.get("Stock Market Exposure", {}).get("Exposure", "40-60%")).strip()
+    if current_ex not in EXPOSURE_OPTIONS:
+        current_ex = "40-60%"
+    chosen = st.selectbox("Exposure", EXPOSURE_OPTIONS, index=EXPOSURE_OPTIONS.index(current_ex))
+    mi["Stock Market Exposure"] = {"Exposure": chosen}
+    pill_class = EXPOSURE_PILL.get(chosen, "pill pill-amber")
+    st.markdown(f'Current: <span class="{pill_class}">{chosen}</span>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        if block == "Market Exposure":
-            rp[block]["IBD Exposure"] = st.selectbox(
-                "IBD Exposure",
-                options=["80-100%", "60-80%", "40-60%", "20-40%", "0-20%"],
-                index=max(0, ["80-100%","60-80%","40-60%","20-40%","0-20%"].index(str(data.get("IBD Exposure","40-60%"))) if str(data.get("IBD Exposure","40-60%")) in ["80-100%","60-80%","40-60%","20-40%","0-20%"] else 2),
-                key=f"me_exposure"
-            )
-            rp[block]["Selected"] = st.text_input("Selected (leave X if you want)", value=str(data.get("Selected", "X")), key="me_selected")
+    # Market Type
+    st.markdown('<div class="card"><h3>Market Type</h3><div class="hint">Select the current regime.</div>', unsafe_allow_html=True)
+    cur_type = str(mi.get("Market Type", {}).get("Type", "Bull Quiet")).strip()
+    if cur_type not in MARKET_TYPES:
+        cur_type = "Bull Quiet"
+    picked_type = st.radio("Type", MARKET_TYPES, index=MARKET_TYPES.index(cur_type), horizontal=True)
+    mi["Market Type"] = {"Type": picked_type}
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        elif block == "Market Type":
-            current = str(data.get("Type", "Bull Quiet"))
-            idx = MARKET_TYPES.index(current) if current in MARKET_TYPES else 0
-            rp[block]["Type"] = st.selectbox("Type", options=MARKET_TYPES, index=idx, key="mt_type")
+    # Trend Condition (QQQ)
+    st.markdown('<div class="card"><h3>Trend Condition (QQQ)</h3><div class="hint">Yes/No toggles.</div>', unsafe_allow_html=True)
+    tc = mi.get("Trend Condition (QQQ)", {})
+    cols = st.columns(5)
+    keys = ["Above 5DMA", "Above 10DMA", "Above 20DMA", "Above 50DMA", "Above 200DMA"]
+    for i, k in enumerate(keys):
+        cur = str(tc.get(k, "No")).strip()
+        with cols[i]:
+            v = st.selectbox(k, ["Yes", "No"], index=0 if cur.lower() == "yes" else 1, key=f"tc_{k}")
+            tc[k] = v
+    mi["Trend Condition (QQQ)"] = tc
+    badge_line = " ".join([f'{k}: {_yesno_badge(tc.get(k,""))}' for k in keys])
+    st.markdown(badge_line, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        elif block == "Trend Condition (QQQ)":
-            for k in ["Above 5DMA","Above 10DMA","Above 20DMA","Above 50DMA","Above 200DMA"]:
-                cur = str(data.get(k, "No"))
-                idx = YES_NO.index(cur) if cur in YES_NO else 1
-                rp[block][k] = st.selectbox(k, options=YES_NO, index=idx, key=f"tc_{k}")
+    # Nasdaq Net 52-Week New High/Low
+    st.markdown('<div class="card"><h3>Nasdaq Net 52-Week New High/Low</h3><div class="hint">Positive = green, negative = red.</div>', unsafe_allow_html=True)
+    hl = mi.get("Nasdaq Net 52-Week New High/Low", {})
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        hl["Daily"] = st.number_input("Daily", value=float(hl.get("Daily", 0)), step=1.0)
+    with c2:
+        hl["Weekly"] = st.number_input("Weekly", value=float(hl.get("Weekly", 0)), step=1.0)
+    with c3:
+        hl["Monthly"] = st.number_input("Monthly", value=float(hl.get("Monthly", 0)), step=1.0)
+    mi["Nasdaq Net 52-Week New High/Low"] = hl
+    st.markdown(
+        f"""
+        <div class="metric-grid">
+          <div class="metric-row"><div class="k">Daily</div><div class="v" style="{_num_color(hl['Daily'])}">{hl['Daily']:.0f}</div></div>
+          <div class="metric-row"><div class="k">Weekly</div><div class="v" style="{_num_color(hl['Weekly'])}">{hl['Weekly']:.0f}</div></div>
+          <div class="metric-row"><div class="k">Monthly</div><div class="v" style="{_num_color(hl['Monthly'])}">{hl['Monthly']:.0f}</div></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        elif block == "NASDAQ Net 52W New High/Low":
-            rp[block]["Daily"] = st.number_input("Daily", value=float(data.get("Daily", 0)), step=1.0, key="nhl_daily")
-            rp[block]["Weekly"] = st.number_input("Weekly", value=float(data.get("Weekly", 0)), step=1.0, key="nhl_weekly")
-            rp[block]["Monthly"] = st.number_input("Monthly", value=float(data.get("Monthly", 0)), step=1.0, key="nhl_monthly")
+    # Market Indicators (expanded)
+    st.markdown('<div class="card"><h3>Market Indicators</h3><div class="hint">Fill these manually from your sources.</div>', unsafe_allow_html=True)
+    ind = mi.get("Market Indicators", {})
 
-        elif block == "Market Indicators":
-            rp[block]["VIX"] = st.number_input("VIX", value=float(data.get("VIX", 0.0)), step=0.01, format="%.2f", key="mi_vix")
-            rp[block]["PCC"] = st.number_input("PCC", value=float(data.get("PCC", 0.0)), step=0.01, format="%.2f", key="mi_pcc")
-            rp[block]["Up/Down Vol Ratio"] = st.number_input("Up/Down Vol Ratio", value=float(data.get("Up/Down Vol Ratio", 0.0)), step=0.01, format="%.2f", key="mi_udvr")
-            rp[block]["A/D Ratio"] = st.number_input("A/D Ratio", value=float(data.get("A/D Ratio", 0.0)), step=0.01, format="%.2f", key="mi_adr")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        ind["VIX"] = st.number_input("VIX", value=float(ind.get("VIX", 0.0)), step=0.01)
+    with c2:
+        ind["PCC"] = st.number_input("PCC", value=float(ind.get("PCC", 0.0)), step=0.01)
+    with c3:
+        ind["Distribution Days"] = st.number_input("Distribution Days", value=int(ind.get("Distribution Days", 0)), step=1)
 
-            cur = str(data.get("U.S. Dollar Trend", "Downtrend"))
-            idx = USD_TREND.index(cur) if cur in USD_TREND else 1
-            rp[block]["U.S. Dollar Trend"] = st.selectbox("U.S. Dollar Trend", options=USD_TREND, index=idx, key="mi_usd_trend")
+    c1, c2 = st.columns(2)
+    with c1:
+        ind["Credit (IEI vs HYG)"] = st.selectbox(
+            "Credit (IEI vs HYG)",
+            ["Aligned", "Divergent"],
+            index=0 if str(ind.get("Credit (IEI vs HYG)", "Aligned")).strip().lower() == "aligned" else 1
+        )
+    with c2:
+        ind["U.S. Dollar"] = st.selectbox(
+            "U.S. Dollar",
+            ["Uptrend", "Downtrend", "Sideways"],
+            index=["uptrend", "downtrend", "sideways"].index(str(ind.get("U.S. Dollar", "Downtrend")).strip().lower())
+            if str(ind.get("U.S. Dollar", "Downtrend")).strip().lower() in ["uptrend","downtrend","sideways"] else 1
+        )
 
-        elif block == "Macro":
-            rp[block]["Fed Funds"] = st.number_input("Fed Funds", value=float(data.get("Fed Funds", 0.0)), step=0.01, format="%.2f", key="mac_ff")
-            rp[block]["M2 Money"] = st.number_input("M2 Money", value=float(data.get("M2 Money", 0.0)), step=0.1, format="%.1f", key="mac_m2")
-            rp[block]["10yr"] = st.number_input("10yr", value=float(data.get("10yr", 0.0)), step=0.01, format="%.2f", key="mac_10y")
-            rp[block]["U.S. Dollar (DXY)"] = st.number_input("U.S. Dollar (DXY)", value=float(data.get("U.S. Dollar (DXY)", 0.0)), step=0.01, format="%.2f", key="mac_dxy")
+    st.markdown('<div class="small-muted" style="margin: 6px 0 4px 0;">Up/Down Volume Ratio</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        ind["Up/Down Volume (Daily)"] = st.number_input("Daily", value=float(ind.get("Up/Down Volume (Daily)", 0.0)), step=0.01, key="udv_d")
+    with c2:
+        ind["Up/Down Volume (Weekly)"] = st.number_input("Weekly", value=float(ind.get("Up/Down Volume (Weekly)", 0.0)), step=0.01, key="udv_w")
+    with c3:
+        ind["Up/Down Volume (Monthly)"] = st.number_input("Monthly", value=float(ind.get("Up/Down Volume (Monthly)", 0.0)), step=0.01, key="udv_m")
 
-        elif block == "Breadth & Participation":
-            rp[block]["% Price Above 10DMA"] = st.number_input("% Price Above 10DMA", value=float(data.get("% Price Above 10DMA", 0)), step=1.0, key="br_10")
-            rp[block]["% Price Above 20DMA"] = st.number_input("% Price Above 20DMA", value=float(data.get("% Price Above 20DMA", 0)), step=1.0, key="br_20")
-            rp[block]["% Price Above 50DMA"] = st.number_input("% Price Above 50DMA", value=float(data.get("% Price Above 50DMA", 0)), step=1.0, key="br_50")
-            rp[block]["% Price Above 200DMA"] = st.number_input("% Price Above 200DMA", value=float(data.get("% Price Above 200DMA", 0)), step=1.0, key="br_200")
+    st.markdown('<div class="small-muted" style="margin: 10px 0 4px 0;">Advance/Decline Ratio</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        ind["A/D Ratio (Daily)"] = st.number_input("Daily ", value=float(ind.get("A/D Ratio (Daily)", 0.0)), step=0.01, key="adr_d")
+    with c2:
+        ind["A/D Ratio (Weekly)"] = st.number_input("Weekly ", value=float(ind.get("A/D Ratio (Weekly)", 0.0)), step=0.01, key="adr_w")
+    with c3:
+        ind["A/D Ratio (Monthly)"] = st.number_input("Monthly ", value=float(ind.get("A/D Ratio (Monthly)", 0.0)), step=0.01, key="adr_m")
 
-        elif block == "Composite Model":
-            st.caption("Score each factor (0.0–2.0). Bad: 0.0–0.5 • Neutral: 1.0 • Good: 1.5–2.0")
-            total = 0.0
-            for factor in [
-                "Monetary Policy (Fed Funds)",
-                "Liquidity Flow (M2 + Credit)",
-                "Rates & Credit (10yr + HYG/IEI)",
-                "Tape Strength (Breadth + U/D + Net High/Lows)",
-                "Sentiment (VIX + Put/Call)",
-            ]:
-                val = float(data.get(factor, 1.0))
-                val = st.slider(factor, min_value=0.0, max_value=2.0, step=0.5, value=val, key=f"cm_{factor}")
-                rp[block][factor] = val
-                total += val
-                label, cls = _score_to_label(val)
-                st.markdown(f'<div style="margin:4px 0 10px 0;">'
-                            f'<span class="{cls}">{label}</span> '
-                            f'<span class="small-muted">({val:.1f})</span></div>', unsafe_allow_html=True)
+    mi["Market Indicators"] = ind
+    st.markdown("</div>", unsafe_allow_html=True)
 
-            total_cls = _total_score_pill_class(total)
-            st.markdown(
-                f'<div style="margin-top:10px;"><b>Total Score:</b> <span class="{total_cls}">{total:.1f}</span> '
-                f'<span class="small-muted">/ 10.0</span></div>',
-                unsafe_allow_html=True
-            )
+    # Macro
+    st.markdown('<div class="card"><h3>Macro</h3><div class="hint">No change.</div>', unsafe_allow_html=True)
+    mac = mi.get("Macro", {})
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        mac["Fed Funds"] = st.number_input("Fed Funds", value=float(mac.get("Fed Funds", 0.0)), step=0.01)
+    with c2:
+        mac["M2 Money"] = st.number_input("M2 Money", value=float(mac.get("M2 Money", 0.0)), step=0.1)
+    with c3:
+        mac["10yr"] = st.number_input("10yr", value=float(mac.get("10yr", 0.0)), step=0.01)
+    mi["Macro"] = mac
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        elif block == "Hot Sectors / Industry Groups":
-            rp[block]["Notes"] = st.text_area("Notes", value=str(data.get("Notes", "")), height=90, key="hot_notes")
+    # Breadth & Participation
+    st.markdown('<div class="card"><h3>Breadth & Participation</h3><div class="hint">No change.</div>', unsafe_allow_html=True)
+    br = mi.get("Breadth & Participation", {})
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        br["% Price Above 10DMA"] = st.number_input("% Above 10DMA", value=float(br.get("% Price Above 10DMA", 0.0)), step=1.0, min_value=0.0, max_value=100.0)
+    with c2:
+        br["% Price Above 20DMA"] = st.number_input("% Above 20DMA", value=float(br.get("% Price Above 20DMA", 0.0)), step=1.0, min_value=0.0, max_value=100.0)
+    with c3:
+        br["% Price Above 50DMA"] = st.number_input("% Above 50DMA", value=float(br.get("% Price Above 50DMA", 0.0)), step=1.0, min_value=0.0, max_value=100.0)
+    with c4:
+        br["% Price Above 200DMA"] = st.number_input("% Above 200DMA", value=float(br.get("% Price Above 200DMA", 0.0)), step=1.0, min_value=0.0, max_value=100.0)
+    mi["Breadth & Participation"] = br
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        elif block == "Market Correlations":
-            rp[block]["Correlated"] = st.text_input("Correlated", value=str(data.get("Correlated","")), key="corr_corr")
-            rp[block]["Uncorrelated"] = st.text_input("Uncorrelated", value=str(data.get("Uncorrelated","")), key="corr_uncorr")
+    # Composite Model (0.5–2.0 step 0.5)
+    st.markdown('<div class="card"><h3>Composite Model</h3><div class="hint">Score each 0.5–2.0 (step 0.5). Total auto-calculates (out of 10).</div>', unsafe_allow_html=True)
+    cm = mi.get("Composite Model", {})
+    components = ["Monetary Policy", "Liquidity Flow", "Rates & Credit", "Tape Strength", "Sentiment"]
+    cols = st.columns(5)
+    total = 0.0
+    for i, comp in enumerate(components):
+        with cols[i]:
+            cur = float(cm.get(comp, 1.0))
+            cur = max(0.5, min(2.0, cur))
+            val = st.slider(comp, min_value=0.5, max_value=2.0, value=cur, step=0.5, key=f"cm_{comp}")
+            cm[comp] = val
+            total += float(val)
+    mi["Composite Model"] = cm
 
-        else:
-            # fallback
-            for k, v in data.items():
-                rp[block][k] = st.text_input(k, value=str(v), key=f"misc_{block}_{k}")
+    badges = []
+    for comp in components:
+        lbl, cls = _score_to_label(float(cm[comp]))
+        badges.append(f'{comp}: <span class="{cls}">{lbl.upper()}</span> <span class="pill pill-amber">{float(cm[comp]):.1f}</span>')
+    st.markdown("<br>".join(badges), unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top:10px;"><b>Total Score:</b> <span class="pill pill-green">{total:.1f}</span> <span class="small-muted">/ 10.0</span></div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("</div>", unsafe_allow_html=True)
+    # Hot Sectors
+    st.markdown('<div class="card"><h3>Hot Sectors / Industry Groups</h3><div class="hint">Freeform notes.</div>', unsafe_allow_html=True)
+    hs = mi.get("Hot Sectors / Industry Groups", {})
+    hs["Notes"] = st.text_area("Notes", value=str(hs.get("Notes", "")), height=90)
+    mi["Hot Sectors / Industry Groups"] = hs
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.session_state.right_panel = rp
+    # Market Correlations
+    st.markdown('<div class="card"><h3>Market Correlations</h3><div class="hint">Freeform text.</div>', unsafe_allow_html=True)
+    mc = mi.get("Market Correlations", {})
+    c1, c2 = st.columns(2)
+    with c1:
+        mc["Correlated"] = st.text_input("Correlated", value=str(mc.get("Correlated", "")))
+    with c2:
+        mc["Uncorrelated"] = st.text_input("Uncorrelated", value=str(mc.get("Uncorrelated", "")))
+    mi["Market Correlations"] = mc
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.session_state.manual_inputs = mi
 
 # =========================
 # UI
@@ -777,45 +945,19 @@ show_cols = [
 ]
 
 st.markdown('<div class="section-title">Major U.S. Indexes</div>', unsafe_allow_html=True)
-st.dataframe(
-    style_df(df_major[show_cols]),
-    use_container_width=True,
-    height=330,
-    column_config={
-        "Ticker": st.column_config.TextColumn(width="small"),
-        "Name": st.column_config.TextColumn(width="medium"),
-        "Relative Strength 1M": st.column_config.TextColumn(width="large"),
-    },
-)
+render_table_html(df_major, show_cols, height_px=330)
 
 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
 st.markdown('<div class="section-title">U.S. Sectors</div>', unsafe_allow_html=True)
-st.dataframe(
-    style_df(df_sectors[show_cols]),
-    use_container_width=True,
-    height=360,
-    column_config={
-        "Ticker": st.column_config.TextColumn(width="small"),
-        "Name": st.column_config.TextColumn(width="medium"),
-        "Relative Strength 1M": st.column_config.TextColumn(width="large"),
-    },
-)
+render_table_html(df_sectors, show_cols, height_px=360)
 
 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
 st.markdown('<div class="section-title">U.S. Sub-Sectors / Industry Groups</div>', unsafe_allow_html=True)
-st.dataframe(
-    style_grouped(df_sub_all[show_cols]),
-    use_container_width=True,
-    height=1100,
-    column_config={
-        "Ticker": st.column_config.TextColumn(width="small"),
-        "Name": st.column_config.TextColumn(width="large"),
-        "Relative Strength 1M": st.column_config.TextColumn(width="large"),
-    },
-)
+render_table_html(df_sub_all, show_cols, height_px=1100)
 
 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-right_panel_ui()
+manual_inputs_ui()
+
