@@ -54,7 +54,6 @@ CSS = """
   font-size: 0.82rem;
   border: 1px solid rgba(255,255,255,0.12);
 }
-
 .pill-red{background: rgba(255,80,80,0.16); color:#FF6B6B;}
 .pill-amber{background: rgba(255,200,60,0.16); color: rgba(255,200,60,0.98);}
 .pill-green{background: rgba(80,255,120,0.16); color:#7CFC9A;}
@@ -414,8 +413,9 @@ def _ret(close: pd.Series, periods: int):
     return close.pct_change(periods=periods)
 
 def _ratio_rs(close_t: pd.Series, close_b: pd.Series, periods: int):
+    # FIXED: compute both legs correctly
     t = close_t / close_t.shift(periods)
-    b = close_b / b.shift(periods)  # <-- FIX BUG: accidentally referenced b before defined (kept original for now)
+    b = close_b / close_b.shift(periods)
     return (t / b) - 1
 
 # -----------------------------
@@ -690,7 +690,6 @@ def _num_color(v):
     return "opacity:0.85; font-weight:950;"
 
 def _score_to_label(score: float):
-    # 0.5..2.0 step 0.5
     if score >= 1.75:
         return ("Good", "badge badge-yes")
     if score >= 1.25:
@@ -727,9 +726,7 @@ def manual_inputs_ui():
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-    # =========================
     # Stock Market Exposure
-    # =========================
     st.markdown('<div class="card"><h3>Stock Market Exposure</h3><div class="hint">Pick your exposure band.</div>', unsafe_allow_html=True)
     current_ex = str(mi.get("Stock Market Exposure", {}).get("Exposure", "40-60%")).strip()
     if current_ex not in EXPOSURE_OPTIONS:
@@ -740,9 +737,7 @@ def manual_inputs_ui():
     st.markdown(f'Current: <span class="{pill_class}">{chosen}</span>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
     # Market Type
-    # =========================
     st.markdown('<div class="card"><h3>Market Type</h3><div class="hint">Select the current regime.</div>', unsafe_allow_html=True)
     cur_type = str(mi.get("Market Type", {}).get("Type", "Bull Quiet")).strip()
     if cur_type not in MARKET_TYPES:
@@ -751,9 +746,7 @@ def manual_inputs_ui():
     mi["Market Type"] = {"Type": picked_type}
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
-    # Trend Condition (QQQ) - unchanged
-    # =========================
+    # Trend Condition (QQQ)
     st.markdown('<div class="card"><h3>Trend Condition (QQQ)</h3><div class="hint">Yes/No toggles.</div>', unsafe_allow_html=True)
     tc = mi.get("Trend Condition (QQQ)", {})
     cols = st.columns(5)
@@ -768,9 +761,7 @@ def manual_inputs_ui():
     st.markdown(badge_line, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
-    # Nasdaq Net 52-Week New High/Low (rename)
-    # =========================
+    # Nasdaq Net 52-Week New High/Low
     st.markdown('<div class="card"><h3>Nasdaq Net 52-Week New High/Low</h3><div class="hint">Positive = green, negative = red.</div>', unsafe_allow_html=True)
     hl = mi.get("Nasdaq Net 52-Week New High/Low", {})
     c1, c2, c3 = st.columns(3)
@@ -793,9 +784,7 @@ def manual_inputs_ui():
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
     # Market Indicators (expanded)
-    # =========================
     st.markdown('<div class="card"><h3>Market Indicators</h3><div class="hint">Fill these manually from your sources.</div>', unsafe_allow_html=True)
     ind = mi.get("Market Indicators", {})
 
@@ -843,9 +832,7 @@ def manual_inputs_ui():
     mi["Market Indicators"] = ind
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
-    # Macro (unchanged)
-    # =========================
+    # Macro
     st.markdown('<div class="card"><h3>Macro</h3><div class="hint">No change.</div>', unsafe_allow_html=True)
     mac = mi.get("Macro", {})
     c1, c2, c3 = st.columns(3)
@@ -858,9 +845,7 @@ def manual_inputs_ui():
     mi["Macro"] = mac
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
-    # Breadth & Participation (unchanged)
-    # =========================
+    # Breadth & Participation
     st.markdown('<div class="card"><h3>Breadth & Participation</h3><div class="hint">No change.</div>', unsafe_allow_html=True)
     br = mi.get("Breadth & Participation", {})
     c1, c2, c3, c4 = st.columns(4)
@@ -875,9 +860,7 @@ def manual_inputs_ui():
     mi["Breadth & Participation"] = br
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
-    # Composite Model (0.5 to 2.0 increments)
-    # =========================
+    # Composite Model (0.5–2.0 step 0.5)
     st.markdown('<div class="card"><h3>Composite Model</h3><div class="hint">Score each 0.5–2.0 (step 0.5). Total auto-calculates (out of 10).</div>', unsafe_allow_html=True)
     cm = mi.get("Composite Model", {})
     components = ["Monetary Policy", "Liquidity Flow", "Rates & Credit", "Tape Strength", "Sentiment"]
@@ -897,22 +880,17 @@ def manual_inputs_ui():
         lbl, cls = _score_to_label(float(cm[comp]))
         badges.append(f'{comp}: <span class="{cls}">{lbl.upper()}</span> <span class="pill pill-amber">{float(cm[comp]):.1f}</span>')
     st.markdown("<br>".join(badges), unsafe_allow_html=True)
-
     st.markdown(f'<div style="margin-top:10px;"><b>Total Score:</b> <span class="pill pill-green">{total:.1f}</span> <span class="small-muted">/ 10.0</span></div>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
-    # Hot Sectors / Industry Groups
-    # =========================
+    # Hot Sectors
     st.markdown('<div class="card"><h3>Hot Sectors / Industry Groups</h3><div class="hint">Freeform notes.</div>', unsafe_allow_html=True)
     hs = mi.get("Hot Sectors / Industry Groups", {})
     hs["Notes"] = st.text_area("Notes", value=str(hs.get("Notes", "")), height=90)
     mi["Hot Sectors / Industry Groups"] = hs
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # =========================
     # Market Correlations
-    # =========================
     st.markdown('<div class="card"><h3>Market Correlations</h3><div class="hint">Freeform text.</div>', unsafe_allow_html=True)
     mc = mi.get("Market Correlations", {})
     c1, c2 = st.columns(2)
@@ -982,4 +960,5 @@ render_table_html(df_sub_all, show_cols, height_px=1100)
 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
 manual_inputs_ui()
+
 
