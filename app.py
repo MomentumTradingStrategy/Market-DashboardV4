@@ -413,7 +413,6 @@ def _ret(close: pd.Series, periods: int):
     return close.pct_change(periods=periods)
 
 def _ratio_rs(close_t: pd.Series, close_b: pd.Series, periods: int):
-    # FIXED: compute both legs correctly
     t = close_t / close_t.shift(periods)
     b = close_b / close_b.shift(periods)
     return (t / b) - 1
@@ -622,7 +621,7 @@ def render_table_html(df: pd.DataFrame, columns: list[str], height_px: int = 360
     st.markdown(table, unsafe_allow_html=True)
 
 # =========================
-# Manual Inputs (UPDATED per your changes)
+# Manual Inputs (UPDATED)
 # =========================
 DEFAULT_MANUAL = {
     "Stock Market Exposure": {"Exposure": "40-60%"},
@@ -634,7 +633,7 @@ DEFAULT_MANUAL = {
         "PCC": 0.67,
         "Credit (IEI vs HYG)": "Aligned",
         "U.S. Dollar": "Downtrend",
-        "DXY Price": 103.25,  # NEW
+        "DXY Price": 103.25,
         "Distribution Days": 2,
         "Up/Down Volume (Daily)": 2.36,
         "Up/Down Volume (Weekly)": 2.10,
@@ -692,7 +691,7 @@ def _num_color(v):
 
 def _score_to_label(score: float):
     """
-    UPDATED THRESHOLDS (per your request):
+    UPDATED THRESHOLDS:
     0–0.5  => Bad (red)
     1.0    => Neutral (amber)
     1.5–2  => Good (green)
@@ -702,7 +701,6 @@ def _score_to_label(score: float):
     except:
         score = 1.0
 
-    # Sliders are 0.5, 1.0, 1.5, 2.0, but this handles any float safely.
     if score <= 0.5:
         return ("Bad", "badge badge-no")
     if score < 1.5:
@@ -815,7 +813,7 @@ def manual_inputs_ui():
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Market Indicators (expanded) + DXY Price
+    # Market Indicators + DXY Price
     st.markdown('<div class="card"><h3>Market Indicators</h3><div class="hint">Fill these manually from your sources.</div>', unsafe_allow_html=True)
     ind = mi.get("Market Indicators", {})
 
@@ -842,7 +840,6 @@ def manual_inputs_ui():
             if str(ind.get("U.S. Dollar", "Downtrend")).strip().lower() in ["uptrend","downtrend","sideways"] else 1
         )
 
-    # NEW: DXY Price input under U.S. Dollar
     ind["DXY Price"] = st.number_input(
         "DXY Price",
         value=float(ind.get("DXY Price", 103.25)),
@@ -898,8 +895,8 @@ def manual_inputs_ui():
     mi["Breadth & Participation"] = br
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Composite Model (0.5–2.0 step 0.5) + UPDATED COLORS
-    st.markdown('<div class="card"><h3>Composite Model</h3><div class="hint">Score each 0.5–2.0 (step 0.5). Total auto-calculates (out of 10).</div>', unsafe_allow_html=True)
+    # Composite Model (UPDATED: allow 0.0 minimum)
+    st.markdown('<div class="card"><h3>Composite Model</h3><div class="hint">Score each 0.0–2.0 (step 0.5). Total auto-calculates (out of 10).</div>', unsafe_allow_html=True)
     cm = mi.get("Composite Model", {})
     components = ["Monetary Policy", "Liquidity Flow", "Rates & Credit", "Tape Strength", "Sentiment"]
     cols = st.columns(5)
@@ -907,8 +904,8 @@ def manual_inputs_ui():
     for i, comp in enumerate(components):
         with cols[i]:
             cur = float(cm.get(comp, 1.0))
-            cur = max(0.5, min(2.0, cur))
-            val = st.slider(comp, min_value=0.5, max_value=2.0, value=cur, step=0.5, key=f"cm_{comp}")
+            cur = max(0.0, min(2.0, cur))
+            val = st.slider(comp, min_value=0.0, max_value=2.0, value=cur, step=0.5, key=f"cm_{comp}")
             cm[comp] = val
             total += float(val)
     mi["Composite Model"] = cm
@@ -916,7 +913,6 @@ def manual_inputs_ui():
     badges = []
     for comp in components:
         lbl, cls = _score_to_label(float(cm[comp]))
-        # small score pill: match score level too (red/amber/green)
         score_val = float(cm[comp])
         if score_val <= 0.5:
             score_pill = "pill pill-red"
@@ -924,7 +920,6 @@ def manual_inputs_ui():
             score_pill = "pill pill-amber"
         else:
             score_pill = "pill pill-green"
-
         badges.append(f'{comp}: <span class="{cls}">{lbl.upper()}</span> <span class="{score_pill}">{score_val:.1f}</span>')
 
     st.markdown("<br>".join(badges), unsafe_allow_html=True)
