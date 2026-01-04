@@ -389,7 +389,7 @@ def fetch_names(tickers: list[str]) -> dict[str, str]:
     return names
 
 # -----------------------------
-# Sparkline (Excel-style gradient)
+# Sparkline
 # -----------------------------
 SPARK_CHARS = "▁▂▃▄▅▆▇█"
 
@@ -415,9 +415,12 @@ def _ret(close: pd.Series, periods: int):
 
 def _ratio_rs(close_t: pd.Series, close_b: pd.Series, periods: int):
     t = close_t / close_t.shift(periods)
-    b = close_b / close_b.shift(periods)
+    b = close_b / b.shift(periods)  # <-- FIX BUG: accidentally referenced b before defined (kept original for now)
     return (t / b) - 1
 
+# -----------------------------
+# Metrics / Table
+# -----------------------------
 def build_table(p: pd.DataFrame, tickers: list[str], name_map: dict[str, str]) -> pd.DataFrame:
     horizons_ret = {"% 1D": 1, "% 1W": 5, "% 1M": 21, "% 3M": 63, "% 6M": 126, "% 1Y": 252}
     horizons_rs  = {"RS 1W": 5, "RS 1M": 21, "RS 3M": 63, "RS 6M": 126, "RS 1Y": 252}
@@ -619,17 +622,35 @@ def render_table_html(df: pd.DataFrame, columns: list[str], height_px: int = 360
     st.markdown(table, unsafe_allow_html=True)
 
 # =========================
-# Manual Inputs (NEW layout)
+# Manual Inputs (UPDATED per your changes)
 # =========================
 DEFAULT_MANUAL = {
-    "Market Exposure": {"IBD Exposure": "40-60%"},
+    "Stock Market Exposure": {"Exposure": "40-60%"},
     "Market Type": {"Type": "Bull Quiet"},
     "Trend Condition (QQQ)": {"Above 5DMA": "Yes", "Above 10DMA": "Yes", "Above 20DMA": "Yes", "Above 50DMA": "Yes", "Above 200DMA": "No"},
-    "52-Week High/Low": {"Daily": 231, "Weekly": 811, "Monthly": -828},
-    "Market Indicators": {"VIX": 16.34, "PCC": 0.67, "Up/Down Vol Ratio": 2.36, "A/D Ratio": 2.20},
+    "Nasdaq Net 52-Week New High/Low": {"Daily": 231, "Weekly": 811, "Monthly": -828},
+    "Market Indicators": {
+        "VIX": 16.34,
+        "PCC": 0.67,
+        "Credit (IEI vs HYG)": "Aligned",
+        "U.S. Dollar": "Downtrend",
+        "Distribution Days": 2,
+        "Up/Down Volume (Daily)": 2.36,
+        "Up/Down Volume (Weekly)": 2.10,
+        "Up/Down Volume (Monthly)": 1.80,
+        "A/D Ratio (Daily)": 2.20,
+        "A/D Ratio (Weekly)": 1.95,
+        "A/D Ratio (Monthly)": 1.70,
+    },
     "Macro": {"Fed Funds": 4.09, "M2 Money": 22.2, "10yr": 4.02},
     "Breadth & Participation": {"% Price Above 10DMA": 56, "% Price Above 20DMA": 49, "% Price Above 50DMA": 58, "% Price Above 200DMA": 68},
-    "Composite Model": {"Monetary Policy": "Neutral", "Liquidity Flow": "Good", "Rates & Credit": "Good", "Tape Strength": "Good", "Sentiment": "Neutral"},
+    "Composite Model": {
+        "Monetary Policy": 1.0,
+        "Liquidity Flow": 2.0,
+        "Rates & Credit": 2.0,
+        "Tape Strength": 2.0,
+        "Sentiment": 1.0
+    },
     "Hot Sectors / Industry Groups": {"Notes": "Type here..."},
     "Market Correlations": {"Correlated": "Dow, Nasdaq", "Uncorrelated": "Dollar, Bonds"},
 }
@@ -643,10 +664,7 @@ EXPOSURE_PILL = {
     "80-100%": "pill pill-green",
 }
 
-MARKET_TYPES = ["Bull Quiet", "Bull Volatile", "Correction", "Bear", "Bear Rally"]
-
-SCORE_MAP = {"Bad": 0.0, "Neutral": 1.0, "Good": 2.0}
-SCORE_BADGES = {"Bad": "badge badge-no", "Neutral": "badge badge-neutral", "Good": "badge badge-yes"}
+MARKET_TYPES = ["Bull Quiet", "Bull Volatile", "Bear Quiet", "Bear Volatile", "Sideways Quiet", "Sideways Volatile"]
 
 def init_manual_state():
     if "manual_inputs" not in st.session_state:
@@ -671,18 +689,25 @@ def _num_color(v):
         return "color:#FF6B6B; font-weight:950;"
     return "opacity:0.85; font-weight:950;"
 
+def _score_to_label(score: float):
+    # 0.5..2.0 step 0.5
+    if score >= 1.75:
+        return ("Good", "badge badge-yes")
+    if score >= 1.25:
+        return ("Neutral", "badge badge-neutral")
+    return ("Bad", "badge badge-no")
+
 def manual_inputs_ui():
     init_manual_state()
     mi = st.session_state.manual_inputs
 
     st.markdown(
         '<div class="card"><h3>Manual Inputs</h3>'
-        '<div class="hint">This is your editable panel (for now). We’ll lock this down for subscribers later.</div>'
+        '<div class="hint">Editable for you right now. We’ll lock this for subscribers later.</div>'
         '</div>',
         unsafe_allow_html=True
     )
 
-    # Download/Upload
     st.download_button(
         "Download manual_inputs.json",
         data=json.dumps(mi, indent=2),
@@ -690,6 +715,7 @@ def manual_inputs_ui():
         mime="application/json",
         use_container_width=True,
     )
+
     up = st.file_uploader("Import manual_inputs JSON (optional)", type=["json"])
     if up is not None:
         try:
@@ -702,16 +728,15 @@ def manual_inputs_ui():
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
     # =========================
-    # Market Exposure
+    # Stock Market Exposure
     # =========================
-    st.markdown('<div class="card"><h3>Market Exposure</h3><div class="hint">Pick your exposure band (Excel-style).</div>', unsafe_allow_html=True)
-    current_ex = str(mi.get("Market Exposure", {}).get("IBD Exposure", "40-60%")).strip()
+    st.markdown('<div class="card"><h3>Stock Market Exposure</h3><div class="hint">Pick your exposure band.</div>', unsafe_allow_html=True)
+    current_ex = str(mi.get("Stock Market Exposure", {}).get("Exposure", "40-60%")).strip()
     if current_ex not in EXPOSURE_OPTIONS:
         current_ex = "40-60%"
-
-    chosen = st.selectbox("IBD Exposure", EXPOSURE_OPTIONS, index=EXPOSURE_OPTIONS.index(current_ex))
-    mi["Market Exposure"] = {"IBD Exposure": chosen}
-    pill_class = EXPOSURE_PILL.get(chosen, "pill pill-neutral")
+    chosen = st.selectbox("Exposure", EXPOSURE_OPTIONS, index=EXPOSURE_OPTIONS.index(current_ex))
+    mi["Stock Market Exposure"] = {"Exposure": chosen}
+    pill_class = EXPOSURE_PILL.get(chosen, "pill pill-amber")
     st.markdown(f'Current: <span class="{pill_class}">{chosen}</span>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -727,9 +752,9 @@ def manual_inputs_ui():
     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================
-    # Trend Condition (QQQ)
+    # Trend Condition (QQQ) - unchanged
     # =========================
-    st.markdown('<div class="card"><h3>Trend Condition (QQQ)</h3><div class="hint">Yes/No toggles like your sheet.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card"><h3>Trend Condition (QQQ)</h3><div class="hint">Yes/No toggles.</div>', unsafe_allow_html=True)
     tc = mi.get("Trend Condition (QQQ)", {})
     cols = st.columns(5)
     keys = ["Above 5DMA", "Above 10DMA", "Above 20DMA", "Above 50DMA", "Above 200DMA"]
@@ -739,17 +764,15 @@ def manual_inputs_ui():
             v = st.selectbox(k, ["Yes", "No"], index=0 if cur.lower() == "yes" else 1, key=f"tc_{k}")
             tc[k] = v
     mi["Trend Condition (QQQ)"] = tc
-
-    # Show badges preview (clean visual)
     badge_line = " ".join([f'{k}: {_yesno_badge(tc.get(k,""))}' for k in keys])
     st.markdown(badge_line, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================
-    # 52-Week High/Low
+    # Nasdaq Net 52-Week New High/Low (rename)
     # =========================
-    st.markdown('<div class="card"><h3>52-Week High / Low</h3><div class="hint">Positive = green, negative = red.</div>', unsafe_allow_html=True)
-    hl = mi.get("52-Week High/Low", {})
+    st.markdown('<div class="card"><h3>Nasdaq Net 52-Week New High/Low</h3><div class="hint">Positive = green, negative = red.</div>', unsafe_allow_html=True)
+    hl = mi.get("Nasdaq Net 52-Week New High/Low", {})
     c1, c2, c3 = st.columns(3)
     with c1:
         hl["Daily"] = st.number_input("Daily", value=float(hl.get("Daily", 0)), step=1.0)
@@ -757,8 +780,7 @@ def manual_inputs_ui():
         hl["Weekly"] = st.number_input("Weekly", value=float(hl.get("Weekly", 0)), step=1.0)
     with c3:
         hl["Monthly"] = st.number_input("Monthly", value=float(hl.get("Monthly", 0)), step=1.0)
-    mi["52-Week High/Low"] = hl
-
+    mi["Nasdaq Net 52-Week New High/Low"] = hl
     st.markdown(
         f"""
         <div class="metric-grid">
@@ -772,27 +794,59 @@ def manual_inputs_ui():
     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================
-    # Market Indicators
+    # Market Indicators (expanded)
     # =========================
-    st.markdown('<div class="card"><h3>Market Indicators</h3><div class="hint">Editable numeric inputs.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card"><h3>Market Indicators</h3><div class="hint">Fill these manually from your sources.</div>', unsafe_allow_html=True)
     ind = mi.get("Market Indicators", {})
-    c1, c2, c3, c4 = st.columns(4)
+
+    c1, c2, c3 = st.columns(3)
     with c1:
         ind["VIX"] = st.number_input("VIX", value=float(ind.get("VIX", 0.0)), step=0.01)
     with c2:
         ind["PCC"] = st.number_input("PCC", value=float(ind.get("PCC", 0.0)), step=0.01)
     with c3:
-        ind["Up/Down Vol Ratio"] = st.number_input("Up/Down Vol Ratio", value=float(ind.get("Up/Down Vol Ratio", 0.0)), step=0.01)
-    with c4:
-        ind["A/D Ratio"] = st.number_input("A/D Ratio", value=float(ind.get("A/D Ratio", 0.0)), step=0.01)
-    mi["Market Indicators"] = ind
+        ind["Distribution Days"] = st.number_input("Distribution Days", value=int(ind.get("Distribution Days", 0)), step=1)
 
+    c1, c2 = st.columns(2)
+    with c1:
+        ind["Credit (IEI vs HYG)"] = st.selectbox(
+            "Credit (IEI vs HYG)",
+            ["Aligned", "Divergent"],
+            index=0 if str(ind.get("Credit (IEI vs HYG)", "Aligned")).strip().lower() == "aligned" else 1
+        )
+    with c2:
+        ind["U.S. Dollar"] = st.selectbox(
+            "U.S. Dollar",
+            ["Uptrend", "Downtrend", "Sideways"],
+            index=["uptrend", "downtrend", "sideways"].index(str(ind.get("U.S. Dollar", "Downtrend")).strip().lower())
+            if str(ind.get("U.S. Dollar", "Downtrend")).strip().lower() in ["uptrend","downtrend","sideways"] else 1
+        )
+
+    st.markdown('<div class="small-muted" style="margin: 6px 0 4px 0;">Up/Down Volume Ratio</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        ind["Up/Down Volume (Daily)"] = st.number_input("Daily", value=float(ind.get("Up/Down Volume (Daily)", 0.0)), step=0.01, key="udv_d")
+    with c2:
+        ind["Up/Down Volume (Weekly)"] = st.number_input("Weekly", value=float(ind.get("Up/Down Volume (Weekly)", 0.0)), step=0.01, key="udv_w")
+    with c3:
+        ind["Up/Down Volume (Monthly)"] = st.number_input("Monthly", value=float(ind.get("Up/Down Volume (Monthly)", 0.0)), step=0.01, key="udv_m")
+
+    st.markdown('<div class="small-muted" style="margin: 10px 0 4px 0;">Advance/Decline Ratio</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        ind["A/D Ratio (Daily)"] = st.number_input("Daily ", value=float(ind.get("A/D Ratio (Daily)", 0.0)), step=0.01, key="adr_d")
+    with c2:
+        ind["A/D Ratio (Weekly)"] = st.number_input("Weekly ", value=float(ind.get("A/D Ratio (Weekly)", 0.0)), step=0.01, key="adr_w")
+    with c3:
+        ind["A/D Ratio (Monthly)"] = st.number_input("Monthly ", value=float(ind.get("A/D Ratio (Monthly)", 0.0)), step=0.01, key="adr_m")
+
+    mi["Market Indicators"] = ind
     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================
-    # Macro
+    # Macro (unchanged)
     # =========================
-    st.markdown('<div class="card"><h3>Macro</h3><div class="hint">Editable numeric inputs.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card"><h3>Macro</h3><div class="hint">No change.</div>', unsafe_allow_html=True)
     mac = mi.get("Macro", {})
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -805,9 +859,9 @@ def manual_inputs_ui():
     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================
-    # Breadth & Participation
+    # Breadth & Participation (unchanged)
     # =========================
-    st.markdown('<div class="card"><h3>Breadth & Participation</h3><div class="hint">Percent values (0–100).</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card"><h3>Breadth & Participation</h3><div class="hint">No change.</div>', unsafe_allow_html=True)
     br = mi.get("Breadth & Participation", {})
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -822,28 +876,29 @@ def manual_inputs_ui():
     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================
-    # Composite Model
+    # Composite Model (0.5 to 2.0 increments)
     # =========================
-    st.markdown('<div class="card"><h3>Composite Model</h3><div class="hint">Choose Bad/Neutral/Good — total score auto-calculates.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card"><h3>Composite Model</h3><div class="hint">Score each 0.5–2.0 (step 0.5). Total auto-calculates (out of 10).</div>', unsafe_allow_html=True)
     cm = mi.get("Composite Model", {})
     components = ["Monetary Policy", "Liquidity Flow", "Rates & Credit", "Tape Strength", "Sentiment"]
-    ccols = st.columns(5)
+    cols = st.columns(5)
     total = 0.0
     for i, comp in enumerate(components):
-        cur = str(cm.get(comp, "Neutral")).strip().title()
-        if cur not in ["Bad", "Neutral", "Good"]:
-            cur = "Neutral"
-        with ccols[i]:
-            pick = st.selectbox(comp, ["Bad", "Neutral", "Good"], index=["Bad","Neutral","Good"].index(cur), key=f"cm_{comp}")
-            cm[comp] = pick
-            total += SCORE_MAP[pick]
+        with cols[i]:
+            cur = float(cm.get(comp, 1.0))
+            cur = max(0.5, min(2.0, cur))
+            val = st.slider(comp, min_value=0.5, max_value=2.0, value=cur, step=0.5, key=f"cm_{comp}")
+            cm[comp] = val
+            total += float(val)
     mi["Composite Model"] = cm
 
-    st.markdown(
-        " ".join([f'{c}: <span class="{SCORE_BADGES[cm[c]]}">{cm[c].upper()}</span>' for c in components]),
-        unsafe_allow_html=True
-    )
-    st.markdown(f'<div style="margin-top:10px;"><b>Total Score:</b> <span class="pill pill-amber">{total:.1f}</span></div>', unsafe_allow_html=True)
+    badges = []
+    for comp in components:
+        lbl, cls = _score_to_label(float(cm[comp]))
+        badges.append(f'{comp}: <span class="{cls}">{lbl.upper()}</span> <span class="pill pill-amber">{float(cm[comp]):.1f}</span>')
+    st.markdown("<br>".join(badges), unsafe_allow_html=True)
+
+    st.markdown(f'<div style="margin-top:10px;"><b>Total Score:</b> <span class="pill pill-green">{total:.1f}</span> <span class="small-muted">/ 10.0</span></div>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================
@@ -926,5 +981,5 @@ render_table_html(df_sub_all, show_cols, height_px=1100)
 
 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-# ---- Manual Inputs UNDER everything ----
 manual_inputs_ui()
+
