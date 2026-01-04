@@ -634,6 +634,7 @@ DEFAULT_MANUAL = {
         "PCC": 0.67,
         "Credit (IEI vs HYG)": "Aligned",
         "U.S. Dollar": "Downtrend",
+        "DXY Price": 103.25,  # NEW
         "Distribution Days": 2,
         "Up/Down Volume (Daily)": 2.36,
         "Up/Down Volume (Weekly)": 2.10,
@@ -690,11 +691,41 @@ def _num_color(v):
     return "opacity:0.85; font-weight:950;"
 
 def _score_to_label(score: float):
-    if score >= 1.75:
-        return ("Good", "badge badge-yes")
-    if score >= 1.25:
+    """
+    UPDATED THRESHOLDS (per your request):
+    0–0.5  => Bad (red)
+    1.0    => Neutral (amber)
+    1.5–2  => Good (green)
+    """
+    try:
+        score = float(score)
+    except:
+        score = 1.0
+
+    # Sliders are 0.5, 1.0, 1.5, 2.0, but this handles any float safely.
+    if score <= 0.5:
+        return ("Bad", "badge badge-no")
+    if score < 1.5:
         return ("Neutral", "badge badge-neutral")
-    return ("Bad", "badge badge-no")
+    return ("Good", "badge badge-yes")
+
+def _total_score_pill(total: float) -> str:
+    """
+    UPDATED TOTAL THRESHOLDS (out of 10):
+    7–10   => green
+    5–6.5  => amber
+    0–4.5  => red
+    """
+    try:
+        total = float(total)
+    except:
+        total = 0.0
+
+    if total >= 7.0:
+        return "pill pill-green"
+    if total >= 5.0:
+        return "pill pill-amber"
+    return "pill pill-red"
 
 def manual_inputs_ui():
     init_manual_state()
@@ -784,7 +815,7 @@ def manual_inputs_ui():
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Market Indicators (expanded)
+    # Market Indicators (expanded) + DXY Price
     st.markdown('<div class="card"><h3>Market Indicators</h3><div class="hint">Fill these manually from your sources.</div>', unsafe_allow_html=True)
     ind = mi.get("Market Indicators", {})
 
@@ -810,6 +841,13 @@ def manual_inputs_ui():
             index=["uptrend", "downtrend", "sideways"].index(str(ind.get("U.S. Dollar", "Downtrend")).strip().lower())
             if str(ind.get("U.S. Dollar", "Downtrend")).strip().lower() in ["uptrend","downtrend","sideways"] else 1
         )
+
+    # NEW: DXY Price input under U.S. Dollar
+    ind["DXY Price"] = st.number_input(
+        "DXY Price",
+        value=float(ind.get("DXY Price", 103.25)),
+        step=0.01
+    )
 
     st.markdown('<div class="small-muted" style="margin: 6px 0 4px 0;">Up/Down Volume Ratio</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -860,7 +898,7 @@ def manual_inputs_ui():
     mi["Breadth & Participation"] = br
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Composite Model (0.5–2.0 step 0.5)
+    # Composite Model (0.5–2.0 step 0.5) + UPDATED COLORS
     st.markdown('<div class="card"><h3>Composite Model</h3><div class="hint">Score each 0.5–2.0 (step 0.5). Total auto-calculates (out of 10).</div>', unsafe_allow_html=True)
     cm = mi.get("Composite Model", {})
     components = ["Monetary Policy", "Liquidity Flow", "Rates & Credit", "Tape Strength", "Sentiment"]
@@ -878,9 +916,24 @@ def manual_inputs_ui():
     badges = []
     for comp in components:
         lbl, cls = _score_to_label(float(cm[comp]))
-        badges.append(f'{comp}: <span class="{cls}">{lbl.upper()}</span> <span class="pill pill-amber">{float(cm[comp]):.1f}</span>')
+        # small score pill: match score level too (red/amber/green)
+        score_val = float(cm[comp])
+        if score_val <= 0.5:
+            score_pill = "pill pill-red"
+        elif score_val < 1.5:
+            score_pill = "pill pill-amber"
+        else:
+            score_pill = "pill pill-green"
+
+        badges.append(f'{comp}: <span class="{cls}">{lbl.upper()}</span> <span class="{score_pill}">{score_val:.1f}</span>')
+
     st.markdown("<br>".join(badges), unsafe_allow_html=True)
-    st.markdown(f'<div style="margin-top:10px;"><b>Total Score:</b> <span class="pill pill-green">{total:.1f}</span> <span class="small-muted">/ 10.0</span></div>', unsafe_allow_html=True)
+
+    total_pill = _total_score_pill(total)
+    st.markdown(
+        f'<div style="margin-top:10px;"><b>Total Score:</b> <span class="{total_pill}">{total:.1f}</span> <span class="small-muted">/ 10.0</span></div>',
+        unsafe_allow_html=True
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Hot Sectors
